@@ -25,16 +25,26 @@ so it runs anywhere including cloud/phone sessions — no `pip install`).
 Locally these come from a gitignored `.env`. **In cloud/phone sessions, set them as Claude Code
 environment secrets** — the sandbox cannot read the local `.env`.
 
-## Known unknowns (verify on first real run; don't assume)
-1. **Are.na attachment file-size limit** — undocumented; mixes are ~100 MB. If `upload` is rejected,
-   switch the file host to **Cloudflare R2** (only `upload` + the served base URL change).
-2. **Block update fields / markdown** — `PUT /v3/blocks/{id}` field names (`title`, `description`)
-   and whether the description renders markdown links are unconfirmed. If links don't render, fall
-   back to plain `Artist – Title — <url>` lines (the helper supports a `--plain` description mode).
-3. **Evenings file field** — track responses carry both `url` and `location`; `publish.py resolve`
-   picks whichever looks like the actual audio file (`.mp3`/`audio` content-type), printing both.
-4. **Are.na API base/host** — endpoints are documented as `/v3/...`; if the host/path differs,
-   override with `ARENA_API_BASE`.
+## Verified facts (resolved on first real run, 2026-06-18 — block 47135727)
+1. **Are.na attachment file-size limit** — RESOLVED: a 142 MB mp3 uploaded fine. R2 fallback not needed.
+2. **Block update fields / markdown** — RESOLVED: `PUT /v3/blocks/{id}` takes `title` + `description`,
+   and markdown **including links renders** (`[t](url)` → real `<a href>`). Note: on read-back
+   `description` is an OBJECT `{markdown, html, plain}`, not a string — check `description.markdown`.
+3. **Evenings file field** — RESOLVED: audio lives in `location` (`url` is usually null);
+   `resolve` prints both and picks `location`.
+4. **Are.na API base/host** — RESOLVED: v3 at `https://api.are.na` ("Are.na API 3.0.0"). The token is a
+   v3 personal access token and is rejected by the v2 API (401) — stay on v3.
+
+## v3 API gotchas (learned the hard way — keep these)
+- **User-Agent required**: Are.na is behind Cloudflare; urllib's default UA gets Error 1010. `publish.py`
+  sets a browser UA on every request.
+- **presign body**: `POST /v3/uploads/presign` wants `{"files":[{"filename","content_type"}]}` (array),
+  and echoes back `files[i].{upload_url,key}`.
+- **create + connect in ONE call**: `POST /v3/blocks` with a flat `channel_ids` array (accepts slugs OR
+  numeric ids). The old `channels:[{id}]` form is silently ignored → orphaned blocks. To disconnect,
+  `DELETE /v3/connections/{connection_id}` (the connection id is nested at channel-content `connection.id`,
+  NOT the channel id; `DELETE /v3/blocks/{id}` is 405).
+- Spec reference: Are.na's OpenAPI lives in the `aredotna/mcp` repo at `src/generated/openapi.json`.
 
 ## Conventions
 - No external Python deps. Secrets only via env. Never commit `.env` or media files.

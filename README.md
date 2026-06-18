@@ -28,6 +28,8 @@ confirm auto-searched links → write the block description.
 `publish.py` (stdlib only, no pip install needed) can also be driven directly:
 
 ```bash
+python3 .claude/skills/publish-mix/publish.py list               # browse your tracks (newest first)
+python3 .claude/skills/publish-mix/publish.py list --search nautiluss
 python3 .claude/skills/publish-mix/publish.py resolve 8389
 python3 .claude/skills/publish-mix/publish.py download <url> downloads/mix.mp3
 python3 .claude/skills/publish-mix/publish.py upload downloads/mix.mp3 --title "Mix title"

@@ -6,6 +6,10 @@ a formatted tracklist + per-track links. Entry point: the `/publish-mix` skill i
 `.claude/skills/publish-mix/`. The deterministic API work lives in `publish.py` (Python stdlib only,
 so it runs anywhere including cloud/phone sessions — no `pip install`).
 
+The future **Next.js site** that displays the published mixes is the *read* side; its API contract,
+gotchas, and Vercel free-tier strategy are in **`WEBAPP.md`** (read it before scaffolding the site;
+fold it in here during cleanup).
+
 ## How to run
 `/publish-mix <evenings-track-url-or-id>` — the skill orchestrates:
 1. `resolve` the evenings track → direct mp3 URL + metadata.

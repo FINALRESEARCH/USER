@@ -5,6 +5,7 @@ Stdlib only (no pip install). Each subcommand is independently runnable so the
 /publish-mix skill (or a human) can call one step at a time and inspect output.
 
 Subcommands:
+  recent   [--limit N] [--station] -> list recent evenings tracks to pick from (JSON)
   resolve  <track-id|url>          -> print evenings file URL + metadata (JSON)
   download <url> <dest>            -> stream the mp3 to a local file
   upload   <file> [--title T]      -> presign + PUT + create Are.na block (prints JSON)
@@ -95,6 +96,55 @@ def track_id_from_arg(arg):
     """Accept a bare id or a full evenings URL like .../tracks/8389."""
     m = re.search(r"/tracks/([^/?#]+)", arg)
     return m.group(1) if m else arg
+
+
+def cmd_recent(args):
+    """List recent evenings tracks so the user can pick one to publish.
+
+    The exact listing endpoint/shape is a known-unknown (see CLAUDE.md): tracks
+    are scoped to a station on evenings.fm. We default to /tracks, allow a
+    station override (arg or EVENINGS_STATION), tolerate common list wrappers,
+    and surface the raw body if no list is found instead of guessing.
+    """
+    key = env("EVENINGS_API_KEY", required=True)
+    base = env("EVENINGS_API_BASE", EVENINGS_API_BASE)
+    station = args.station or env("EVENINGS_STATION")
+    path = f"/stations/{urllib.parse.quote(str(station))}/tracks" if station else "/tracks"
+    query = urllib.parse.urlencode({"limit": args.limit})
+    _, body, _ = request(
+        "GET", f"{base}{path}?{query}",
+        headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+    )
+
+    items = None
+    if isinstance(body, list):
+        items = body
+    elif isinstance(body, dict):
+        for key_name in ("tracks", "data", "results", "items"):
+            if isinstance(body.get(key_name), list):
+                items = body[key_name]
+                break
+    if items is None:
+        # Don't guess the field name — surface the raw body so it can be identified.
+        print(json.dumps({
+            "error": "could not find a track list in the response",
+            "path": path,
+            "raw": body,
+        }, indent=2))
+        return
+
+    out = []
+    for track in items[: args.limit]:
+        if not isinstance(track, dict):
+            continue
+        out.append({
+            "id": first(track, "id", "track_id"),
+            "title": first(track, "title", "name"),
+            "duration": first(track, "duration"),
+            "created_at": first(track, "created_at", "created", "published_at", "date"),
+            "station": first(track, "station.slug", "station_slug", "station"),
+        })
+    print(json.dumps(out, indent=2))
 
 
 def cmd_resolve(args):
@@ -221,6 +271,11 @@ def cmd_block_get(args):
 def build_parser():
     p = argparse.ArgumentParser(description="evenings -> Are.na publishing helper")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    rc = sub.add_parser("recent", help="list recent evenings tracks to pick from")
+    rc.add_argument("--limit", type=int, default=10)
+    rc.add_argument("--station", help="station slug (defaults to EVENINGS_STATION env if set)")
+    rc.set_defaults(func=cmd_recent)
 
     r = sub.add_parser("resolve", help="evenings track id/url -> file URL + metadata")
     r.add_argument("track")

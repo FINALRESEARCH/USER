@@ -20,7 +20,8 @@ so it runs anywhere including cloud/phone sessions — no `pip install`).
 - `ARENA_TOKEN` — Are.na personal access token (Bearer).
 - `ARENA_CHANNEL` — target Are.na channel slug or id.
 - Optional: `EVENINGS_API_BASE` (default `https://api.evenings.co/v1`),
-  `ARENA_API_BASE` (default `https://api.are.na/v3`).
+  `ARENA_API_BASE` (default `https://api.are.na/v3`),
+  `EVENINGS_STATION` (station slug for `publish.py recent`'s "pick a mix" listing).
 
 Locally these come from a gitignored `.env`. **In cloud/phone sessions, set them as Claude Code
 environment secrets** — the sandbox cannot read the local `.env`.
@@ -33,7 +34,12 @@ environment secrets** — the sandbox cannot read the local `.env`.
    back to plain `Artist – Title — <url>` lines (the helper supports a `--plain` description mode).
 3. **Evenings file field** — track responses carry both `url` and `location`; `publish.py resolve`
    picks whichever looks like the actual audio file (`.mp3`/`audio` content-type), printing both.
-4. **Are.na API base/host** — endpoints are documented as `/v3/...`; if the host/path differs,
+4. **Evenings recent-tracks listing** — `publish.py recent` powers the "pick a mix" prompt when
+   `/publish-mix` is run with no argument. The listing endpoint/shape is unconfirmed: it defaults to
+   `GET /tracks?limit=N`, allows a per-station path via `--station`/`EVENINGS_STATION`
+   (`/stations/<slug>/tracks`), and tolerates `tracks`/`data`/`results`/`items` list wrappers. If it
+   can't find a list it prints the raw body so the real field/path can be identified — don't guess.
+5. **Are.na API base/host** — endpoints are documented as `/v3/...`; if the host/path differs,
    override with `ARENA_API_BASE`.
 
 ## Conventions

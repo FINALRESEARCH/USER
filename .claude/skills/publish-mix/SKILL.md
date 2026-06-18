@@ -14,7 +14,16 @@ env (`.env` locally, environment secrets in cloud sessions): `EVENINGS_API_KEY`,
 
 ## Input
 The user invokes `/publish-mix <evenings-track-url-or-id>` (e.g. a full
-`https://evenings.fm/<station>/tracks/8389` URL or just `8389`). If no argument was given, ask for it.
+`https://evenings.fm/<station>/tracks/8389` URL or just `8389`).
+
+**If no argument was given, don't just ask for one — show recent tracks to pick from.**
+Run `publish.py recent` (add `--limit N` or `--station <slug>` / set `EVENINGS_STATION` if
+needed) and present the results with `AskUserQuestion`: one option per track, labeled with its
+title (and date/duration if present), so the user picks the mix to publish. Use the chosen track's
+`id` as `<arg>` for step 1.
+- If `recent` returns the `"could not find a track list"` error (the listing endpoint/shape is a
+  known-unknown — see CLAUDE.md), surface the raw output and fall back to asking the user to paste
+  the track URL or id directly. Don't guess the endpoint.
 
 ## Steps
 

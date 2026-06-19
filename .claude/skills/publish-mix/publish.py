@@ -59,8 +59,18 @@ def die(msg, code=1):
 
 
 # ----------------------------------------------------------------------- http
+# Cloudflare (in front of api.are.na) bans the default "Python-urllib/x.y"
+# user-agent, so present a normal browser UA on every request.
+USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
+
 def request(method, url, headers=None, data=None, expect_json=True):
-    req = urllib.request.Request(url, method=method, data=data, headers=headers or {})
+    headers = dict(headers or {})
+    headers.setdefault("User-Agent", USER_AGENT)
+    req = urllib.request.Request(url, method=method, data=data, headers=headers)
     try:
         with urllib.request.urlopen(req) as resp:
             body = resp.read()
@@ -202,14 +212,17 @@ def cmd_upload(args):
     filename = os.path.basename(path)
     content_type = "audio/mpeg"
 
-    # 1) presign
+    # 1) presign — Are.na expects a `files` array at the root and returns a
+    #    matching `files` array of {upload_url, key, content_type} objects.
     _, presign, _ = request(
         "POST", f"{base}/uploads/presign",
         headers=arena_headers(token),
-        data=json.dumps({"filename": filename, "content_type": content_type}).encode(),
+        data=json.dumps({"files": [{"filename": filename, "content_type": content_type}]}).encode(),
     )
-    upload_url = first(presign, "upload_url", "url")
-    obj_key = first(presign, "key")
+    files = presign.get("files") if isinstance(presign, dict) else None
+    entry = files[0] if isinstance(files, list) and files else presign
+    upload_url = first(entry, "upload_url", "url")
+    obj_key = first(entry, "key")
     if not upload_url or not obj_key:
         die(f"unexpected presign response: {json.dumps(presign)}")
 

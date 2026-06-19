@@ -9,11 +9,27 @@ so it runs anywhere including cloud/phone sessions — no `pip install`).
 ## How to run
 `/publish-mix <evenings-track-url-or-id>` — the skill orchestrates:
 1. `resolve` the evenings track → direct mp3 URL + metadata.
-2. `download` the mp3 to `downloads/`.
-3. `upload` to the Are.na channel (presign → S3 PUT → create block) → returns a block id.
-4. User pastes a tracklist; skill parses it.
-5. For each track, `WebSearch` Bandcamp + YouTube → user confirms the link (`AskUserQuestion`).
-6. `set-meta` writes the title + markdown tracklist into the block description.
+2. `ingest` that URL into the Are.na channel — Are.na fetches + re-hosts it server-side, so no
+   bytes pass through this machine (important for ~100 MB mixes). Falls back to `upload --url`
+   (streams source → presigned PUT, no disk), then to `download` + local `upload` only if needed.
+   Returns a block id.
+3. User pastes a tracklist; skill parses it.
+4. For each track, `WebSearch` Bandcamp + YouTube → user confirms the link (`AskUserQuestion`).
+5. `set-meta` writes the title + markdown tracklist into the block description.
+
+## Verified Are.na API behavior (confirmed on a real run 2026-06, mp3 ~5 MB)
+- **Presign body shape:** `POST /v3/uploads/presign` requires `{"files":[{filename, content_type}]}`
+  (a `files` array at the root) and returns a matching `files` array of `{upload_url, key, content_type}`.
+- **Cloudflare UA ban:** api.are.na (behind Cloudflare) 403s the default `Python-urllib` user-agent
+  (error 1010). `publish.py` sends a browser User-Agent on every request.
+- **Direct URL ingest re-hosts:** `POST /v3/blocks {value:<any media url>, channels:[...]}` makes
+  Are.na fetch the URL and create a re-hosted `Attachment` (served from `attachments.are.na`), not a
+  bare Link — same byte count, with the source recorded under `source`. This is the zero-transfer path.
+- **Block creation is async:** the block returns `PendingBlock`/`state:processing`; poll
+  `GET /v3/blocks/{id}` until `state` ≠ `processing`. `rehosted:true` in helper output ⇒ durable copy.
+- **Deleting a block from a channel:** `DELETE /v3/connections/{connection_id}` → 204. The
+  connection id comes from `GET /v3/channels/{slug}/contents` (`item.connection.id`). Block-level
+  `DELETE /v3/blocks/{id}` is 405; `…/channels/{slug}/blocks/{id}` is 404.
 
 ## Required environment variables
 - `EVENINGS_API_KEY` — evenings personal API key (Bearer).
@@ -27,8 +43,10 @@ Locally these come from a gitignored `.env`. **In cloud/phone sessions, set them
 environment secrets** — the sandbox cannot read the local `.env`.
 
 ## Known unknowns (verify on first real run; don't assume)
-1. **Are.na attachment file-size limit** — undocumented; mixes are ~100 MB. If `upload` is rejected,
-   switch the file host to **Cloudflare R2** (only `upload` + the served base URL change).
+1. **Are.na attachment file-size limit** — undocumented; small files (~5 MB) confirmed working, but
+   the ~100 MB case is still unverified. With `ingest`/`upload --url` the limit is enforced by
+   Are.na's own fetcher, not by us. If a large file is rejected (size/413), switch the file host to
+   **Cloudflare R2** (only the served base URL changes; still ingestible via `ingest <r2-url>`).
 2. **Block update fields / markdown** — `PUT /v3/blocks/{id}` field names (`title`, `description`)
    and whether the description renders markdown links are unconfirmed. If links don't render, fall
    back to plain `Artist – Title — <url>` lines (the helper supports a `--plain` description mode).

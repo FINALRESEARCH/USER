@@ -8,9 +8,16 @@ Subcommands:
   recent   [--limit N] [--station] -> list recent evenings tracks to pick from (JSON)
   resolve  <track-id|url>          -> print evenings file URL + metadata (JSON)
   download <url> <dest>            -> stream the mp3 to a local file
-  upload   <file> [--title T]      -> presign + PUT + create Are.na block (prints JSON)
+  ingest   <url> [--title T]       -> create Are.na block directly from a URL (zero transfer)
+  upload   [file] [--url U] [--title T] -> presign + PUT + create block (local file or streamed)
   set-meta <block-id> [...]        -> PUT title/description onto a block
   block-get <block-id>             -> fetch a block (verification)
+
+Avoiding the local round-trip for big mixes: prefer `ingest <evenings-file-url>` —
+Are.na fetches and re-hosts the file server-side, so no bytes pass through this
+machine. If Are.na ever returns a bare Link instead of a re-hosted Attachment
+(check the `rehosted` field), fall back to `upload --url <evenings-file-url>`,
+which streams the source straight into the presigned S3 PUT without touching disk.
 
 Config via env (loaded from ./.env if present):
   EVENINGS_API_KEY, ARENA_TOKEN, ARENA_CHANNEL
@@ -22,6 +29,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -202,18 +210,71 @@ def arena_headers(token, json_body=True):
     return h
 
 
-def cmd_upload(args):
+def arena_create_block(base, token, value, channel, title=None):
+    """POST a block into the channel from a URL `value` and return the block dict.
+
+    Are.na fetches `value` server-side; for a media URL it re-hosts the file as an
+    Attachment. This is used for both the temp-bucket value (streaming upload) and
+    a direct source URL (zero-transfer ingest)."""
+    payload = {"value": value, "channels": [{"id": channel}]}
+    if title:
+        payload["title"] = title
+    _, block, _ = request(
+        "POST", f"{base}/blocks", headers=arena_headers(token),
+        data=json.dumps(payload).encode(),
+    )
+    return block
+
+
+def arena_wait_for_block(base, token, block_id, tries=20, delay=3):
+    """Poll a block until it leaves the `processing` state (Are.na transcodes
+    async). Returns the final block dict (or the last seen one)."""
+    block = {}
+    for _ in range(tries):
+        _, block, _ = request(
+            "GET", f"{base}/blocks/{urllib.parse.quote(str(block_id))}",
+            headers=arena_headers(token, json_body=False),
+        )
+        if block.get("state") != "processing":
+            return block
+        time.sleep(delay)
+    return block
+
+
+def _block_report(block, base, token, **extra):
+    """Wait for processing to finish, then print a uniform result summary that
+    records whether Are.na actually re-hosted the file (Attachment) vs. left it a
+    bare Link — so the caller knows if a streaming fallback is needed."""
+    block_id = first(block, "id", "block.id")
+    final = arena_wait_for_block(base, token, block_id) if block_id else block
+    att = final.get("attachment") if isinstance(final, dict) else None
+    att_url = (att or {}).get("url") or ""
+    out = {
+        "block_id": block_id,
+        "arena_url": f"https://www.are.na/block/{block_id}" if block_id else None,
+        "state": final.get("state") if isinstance(final, dict) else None,
+        "type": final.get("type") if isinstance(final, dict) else None,
+        # True once the bytes live on Are.na's own attachments host (durable).
+        "rehosted": att_url.startswith("https://attachments.are.na/"),
+        "attachment": att,
+    }
+    out.update(extra)
+    print(json.dumps(out, indent=2))
+
+
+def cmd_ingest(args):
+    """Zero-transfer path: hand Are.na the source URL and let it fetch + re-host
+    the file server-side. No download, no presign, no PUT — nothing flows through
+    this machine. Verifies the result is a re-hosted Attachment, not a bare Link."""
     token = env("ARENA_TOKEN", required=True)
     channel = env("ARENA_CHANNEL", required=True)
     base = env("ARENA_API_BASE", ARENA_API_BASE)
-    path = args.file
-    if not os.path.exists(path):
-        die(f"file not found: {path}")
-    filename = os.path.basename(path)
-    content_type = "audio/mpeg"
+    block = arena_create_block(base, token, args.url, channel, title=args.title)
+    _block_report(block, base, token, method="ingest", source_url=args.url)
 
-    # 1) presign — Are.na expects a `files` array at the root and returns a
-    #    matching `files` array of {upload_url, key, content_type} objects.
+
+def _arena_presign(base, token, filename, content_type):
+    """POST /uploads/presign and return (upload_url, key) for a single file."""
     _, presign, _ = request(
         "POST", f"{base}/uploads/presign",
         headers=arena_headers(token),
@@ -225,29 +286,52 @@ def cmd_upload(args):
     obj_key = first(entry, "key")
     if not upload_url or not obj_key:
         die(f"unexpected presign response: {json.dumps(presign)}")
+    return upload_url, obj_key
 
-    # 2) PUT bytes to S3
-    with open(path, "rb") as fh:
-        raw = fh.read()
-    request("PUT", upload_url, headers={"Content-Type": content_type},
-            data=raw, expect_json=False)
 
-    # 3) create block in the channel
+def cmd_upload(args):
+    """Upload to Are.na's temp bucket then create the block. Source is either a
+    local --file (read into memory) or a --url that is *streamed* straight from
+    its host into the presigned S3 PUT — no local file, constant memory — so a
+    100 MB mix never lands on disk. Used as the reliable fallback when direct
+    `ingest` would yield a bare Link instead of a re-hosted Attachment."""
+    token = env("ARENA_TOKEN", required=True)
+    channel = env("ARENA_CHANNEL", required=True)
+    base = env("ARENA_API_BASE", ARENA_API_BASE)
+    content_type = "audio/mpeg"
+
+    if args.url:
+        # Stream: open the source GET and feed the response object directly as
+        # the PUT body. http.client reads it in 8 KB blocks; passing the source's
+        # Content-Length keeps S3 happy (no chunked encoding) and memory flat.
+        src = urllib.request.urlopen(
+            urllib.request.Request(args.url, headers={"User-Agent": USER_AGENT})
+        )
+        length = src.headers.get("Content-Length")
+        filename = args.title and re.sub(r"[^\w.-]+", "_", args.title) + ".mp3"
+        filename = filename or os.path.basename(urllib.parse.urlparse(args.url).path) or "mix.mp3"
+        upload_url, obj_key = _arena_presign(base, token, filename, content_type)
+        put_headers = {"Content-Type": content_type}
+        if length:
+            put_headers["Content-Length"] = length
+        request("PUT", upload_url, headers=put_headers, data=src, expect_json=False)
+        uploaded_mb = round(int(length) / 1_000_000, 1) if length else None
+    else:
+        path = args.file
+        if not path or not os.path.exists(path):
+            die(f"file not found: {path!r} (pass a local --file path or --url to stream)")
+        filename = os.path.basename(path)
+        upload_url, obj_key = _arena_presign(base, token, filename, content_type)
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        request("PUT", upload_url, headers={"Content-Type": content_type},
+                data=raw, expect_json=False)
+        uploaded_mb = round(len(raw) / 1_000_000, 1)
+
     value = ARENA_TEMP_URL.format(key=obj_key)
-    payload = {"value": value, "channels": [{"id": channel}]}
-    if args.title:
-        payload["title"] = args.title
-    _, block, _ = request(
-        "POST", f"{base}/blocks", headers=arena_headers(token),
-        data=json.dumps(payload).encode(),
-    )
-    block_id = first(block, "id", "block.id")
-    print(json.dumps({
-        "block_id": block_id,
-        "arena_url": f"https://www.are.na/block/{block_id}" if block_id else None,
-        "uploaded_mb": round(len(raw) / 1_000_000, 1),
-        "raw": block,
-    }, indent=2))
+    block = arena_create_block(base, token, value, channel, title=args.title)
+    _block_report(block, base, token, method=("stream" if args.url else "file"),
+                  uploaded_mb=uploaded_mb)
 
 
 def cmd_set_meta(args):
@@ -299,8 +383,14 @@ def build_parser():
     d.add_argument("dest")
     d.set_defaults(func=cmd_download)
 
-    u = sub.add_parser("upload", help="upload a file to Are.na channel as a block")
-    u.add_argument("file")
+    i = sub.add_parser("ingest", help="create a block directly from a source URL (zero transfer)")
+    i.add_argument("url")
+    i.add_argument("--title")
+    i.set_defaults(func=cmd_ingest)
+
+    u = sub.add_parser("upload", help="upload a local file or stream a --url into Are.na as a block")
+    u.add_argument("file", nargs="?", help="local file path (omit when using --url)")
+    u.add_argument("--url", help="stream from this URL instead of a local file (no disk)")
     u.add_argument("--title")
     u.set_defaults(func=cmd_upload)
 

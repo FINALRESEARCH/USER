@@ -1,6 +1,13 @@
 # secrets
 .env
-.env.local
+.env*.local
+
+# node.js / next.js
+/node_modules
+/.next
+/out
+/build
+next-env.d.ts
 
 # media / downloads (Are.na is the host; keep masters on Synology, not in git)
 downloads/

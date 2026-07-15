@@ -11,7 +11,7 @@ export default async function Home() {
   } catch (err) {
     return (
       <main>
-        <h1>MUSIC</h1>
+        <h1>USER</h1>
         <FinalResearchCredit />
         <p>Could not load mixes: {(err as Error).message}</p>
       </main>
@@ -20,7 +20,7 @@ export default async function Home() {
 
   return (
     <main>
-      <h1>MUSIC</h1>
+      <h1>USER</h1>
       <FinalResearchCredit />
       {mixes.length === 0 ? (
         <p>No mixes yet.</p>

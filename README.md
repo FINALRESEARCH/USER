@@ -1,12 +1,10 @@
-# MUSIC
+# USER
 
 Publishing pipeline for DJ mixes: **evenings.fm → Are.na → (future site)**.
 
 Record a mix on [evenings.fm](https://evenings.fm); run the `/publish-mix` Claude Code skill to
 download it, upload it to an Are.na channel, and attach a formatted tracklist with per-track
 buy/Bandcamp/YouTube links. The Are.na channel becomes the canonical, site-ready source of mixes.
-
-> Repo name is `MUSIC` for now — rename later.
 
 ## Quick start
 

@@ -1,0 +1,127 @@
+/* Plain directory feeling: black background, white text, Arial, HTML defaults
+   for spacing/sizing/padding. Keep this file minimal — let the browser do the
+   rest. */
+
+/* FR credit hover effect draws its lines in --color-text; match the site (white). */
+:root {
+  --color-text: #fff;
+}
+
+body {
+  background: #000;
+  color: #fff;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 10px;
+}
+
+/* Uniform type: every element same size, same (normal) weight. No headings
+   standing out, no bold — a flat directory listing. */
+body * {
+  font-size: 10px;
+  font-weight: normal;
+}
+
+/* The one deliberate deviation from raw HTML defaults: the browser's default
+   link blue/purple is illegible on black. Keep them underlined, just legible. */
+a {
+  color: #9cf;
+}
+a:visited {
+  color: #c9f;
+}
+
+/* Custom audio player: play toggle, a 2px scrub bar, time labels. Nothing else. */
+.player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 300px;
+}
+.player button {
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+.player time {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.player input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  height: 2px;
+  cursor: pointer;
+  /* track fill is set inline (played = #fff, remaining = #555) */
+}
+/* Invisible thumb: keep it wide enough to grab/drag, but with no visible mark —
+   only the 2px bar shows. */
+.player input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: transparent;
+  border: none;
+}
+.player input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: transparent;
+  border: none;
+}
+
+/* A bit of breathing room between the player and the View Details toggle. */
+details {
+  margin-top: 8px;
+}
+
+/* Drop the default disclosure triangle next to the summary. */
+summary {
+  list-style: none;
+  cursor: pointer;
+}
+summary::-webkit-details-marker {
+  display: none;
+}
+
+img {
+  max-width: 240px;
+  height: auto;
+}
+
+/* FR credit hover effect (FINALRESEARCH/FR_CREDIT_HOVER). The .final-research-hover
+   span overlays the default text and is revealed on hover; the script draws the
+   corner lines. Font size is left to the global 10px rule. */
+.final-research-credit a {
+  position: relative;
+  display: inline-block;
+  text-decoration: none;
+  color: var(--color-text, #2e4369);
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+.final-research-default {
+  display: inline-block;
+  visibility: visible;
+  transition: visibility 0s, opacity 0.2s ease;
+}
+.final-research-hover {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  visibility: hidden;
+  white-space: nowrap;
+}
+.final-research-credit a:hover .final-research-hover {
+  opacity: 1;
+  visibility: visible;
+}
+.final-research-credit a:hover .final-research-default {
+  visibility: hidden;
+}

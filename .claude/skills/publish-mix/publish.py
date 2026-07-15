@@ -6,6 +6,7 @@ Stdlib only (no pip install). Each subcommand is independently runnable so the
 
 Subcommands:
   recent   [--limit N] [--station] -> list recent evenings tracks to pick from (JSON)
+  list     [--search S] [--json]   -> list your evenings tracks (newest first)
   resolve  <track-id|url>          -> print evenings file URL + metadata (JSON)
   download <url> <dest>            -> stream the mp3 to a local file
   ingest   <url> [--title T]       -> create Are.na block directly from a URL (zero transfer)
@@ -38,6 +39,14 @@ EVENINGS_API_BASE = "https://api.evenings.co/v1"
 ARENA_API_BASE = "https://api.are.na/v3"
 ARENA_TEMP_URL = "https://s3.amazonaws.com/arena_images-temp/{key}"
 
+# Are.na sits behind Cloudflare, which rejects urllib's default request
+# signature with "Error 1010: Access denied". A browser-like User-Agent on
+# every request avoids it. (Verified on first real run, 2026-06-18.)
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+)
+
 
 # --------------------------------------------------------------------------- env
 def load_dotenv(path=".env"):
@@ -67,14 +76,6 @@ def die(msg, code=1):
 
 
 # ----------------------------------------------------------------------- http
-# Cloudflare (in front of api.are.na) bans the default "Python-urllib/x.y"
-# user-agent, so present a normal browser UA on every request.
-USER_AGENT = (
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-)
-
-
 def request(method, url, headers=None, data=None, expect_json=True):
     headers = dict(headers or {})
     headers.setdefault("User-Agent", USER_AGENT)
@@ -189,6 +190,47 @@ def cmd_resolve(args):
     print(json.dumps(out, indent=2))
 
 
+def fmt_duration(seconds):
+    try:
+        s = int(seconds)
+    except (TypeError, ValueError):
+        return "?"
+    return f"{s // 60}:{s % 60:02d}"
+
+
+def cmd_list(args):
+    key = env("EVENINGS_API_KEY", required=True)
+    base = env("EVENINGS_API_BASE", EVENINGS_API_BASE)
+    _, body, _ = request(
+        "GET", f"{base}/tracks",
+        headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+    )
+    tracks = body if isinstance(body, list) else body.get("tracks", body.get("data", []))
+
+    if args.search:
+        needle = args.search.lower()
+        tracks = [t for t in tracks if needle in (t.get("title") or "").lower()]
+
+    # newest first by streamedAt/createdAt (ISO 8601 strings sort lexically)
+    tracks.sort(key=lambda t: t.get("streamedAt") or t.get("createdAt") or "", reverse=True)
+
+    if args.json:
+        print(json.dumps(tracks, indent=2))
+        return
+
+    if not tracks:
+        print("no tracks found" + (f" matching {args.search!r}" if args.search else ""))
+        return
+
+    print(f"{'id':>6}  {'dur':>7}  {'date':<10}  {'pub':<3}  title")
+    for t in tracks:
+        date = (t.get("streamedAt") or t.get("createdAt") or "")[:10]
+        pub = "yes" if t.get("published") else "no"
+        title = t.get("title") or "(untitled)"
+        print(f"{t.get('id'):>6}  {fmt_duration(t.get('duration')):>7}  {date:<10}  {pub:<3}  {title}")
+    print(f"\n{len(tracks)} track(s). Publish one with: /publish-mix <id>")
+
+
 def cmd_download(args):
     status, body, headers = request("GET", args.url, expect_json=False)
     with open(args.dest, "wb") as fh:
@@ -215,8 +257,11 @@ def arena_create_block(base, token, value, channel, title=None):
 
     Are.na fetches `value` server-side; for a media URL it re-hosts the file as an
     Attachment. This is used for both the temp-bucket value (streaming upload) and
-    a direct source URL (zero-transfer ingest)."""
-    payload = {"value": value, "channels": [{"id": channel}]}
+    a direct source URL (zero-transfer ingest). POST /blocks takes a flat
+    `channel_ids` array; per the v3 OpenAPI spec it accepts slugs as well as
+    numeric ids. The old `channels:[{id}]` form was silently ignored, creating
+    orphaned blocks. (Verified 2026-06-18.)"""
+    payload = {"value": value, "channel_ids": [channel]}
     if title:
         payload["title"] = title
     _, block, _ = request(
@@ -373,6 +418,11 @@ def build_parser():
     rc.add_argument("--limit", type=int, default=10)
     rc.add_argument("--station", help="station slug (defaults to EVENINGS_STATION env if set)")
     rc.set_defaults(func=cmd_recent)
+
+    l = sub.add_parser("list", help="list your evenings tracks (newest first)")
+    l.add_argument("--search", help="filter by title substring (case-insensitive)")
+    l.add_argument("--json", action="store_true", help="emit raw track JSON")
+    l.set_defaults(func=cmd_list)
 
     r = sub.add_parser("resolve", help="evenings track id/url -> file URL + metadata")
     r.add_argument("track")

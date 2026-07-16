@@ -13,6 +13,7 @@ Subcommands:
   upload   [file] [--url U] [--title T] -> presign + PUT + create block (local file or streamed)
   set-meta <block-id> [...]        -> PUT title/description onto a block
   block-get <block-id>             -> fetch a block (verification)
+  revalidate                       -> POST the live site's revalidate route (busts the 'mixes' ISR tag)
 
 Avoiding the local round-trip for big mixes: prefer `ingest <evenings-file-url>` —
 Are.na fetches and re-hosts the file server-side, so no bytes pass through this
@@ -24,6 +25,7 @@ Config via env (loaded from ./.env if present):
   EVENINGS_API_KEY, ARENA_TOKEN, ARENA_CHANNEL
   EVENINGS_API_BASE (default https://api.evenings.co/v1)
   ARENA_API_BASE    (default https://api.are.na/v3)
+  SITE_URL, REVALIDATE_SECRET (for the `revalidate` subcommand; see WEBAPP.md)
 """
 import argparse
 import json
@@ -409,6 +411,22 @@ def cmd_block_get(args):
     print(json.dumps(body, indent=2))
 
 
+# -------------------------------------------------------------------- revalidate
+def cmd_revalidate(args):
+    """Tell the live Next.js site its Are.na data changed, so it busts the ISR
+    'mixes' tag instead of waiting for the daily cron (see WEBAPP.md). Call this
+    after any channel edit — set-meta, a new ingest/upload, or a manual
+    connect/disconnect (e.g. swapping a block for a re-upload)."""
+    site = env("SITE_URL", required=True)
+    secret = env("REVALIDATE_SECRET", required=True)
+    _, body, _ = request(
+        "POST", f"{site.rstrip('/')}/api/revalidate",
+        headers={"x-secret": secret, "Accept": "application/json"},
+        data=b"",
+    )
+    print(json.dumps({"site": site, "response": body}, indent=2))
+
+
 # ------------------------------------------------------------------------ main
 def build_parser():
     p = argparse.ArgumentParser(description="evenings -> Are.na publishing helper")
@@ -454,6 +472,9 @@ def build_parser():
     g = sub.add_parser("block-get", help="fetch a block (verification)")
     g.add_argument("block_id")
     g.set_defaults(func=cmd_block_get)
+
+    rv = sub.add_parser("revalidate", help="POST the live site's revalidate route (bust ISR cache)")
+    rv.set_defaults(func=cmd_revalidate)
     return p
 
 

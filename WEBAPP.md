@@ -6,13 +6,13 @@
 > the Are.na channel is the contract, not a function call. The Next app never runs the Python.
 
 ## Architecture in one line
-`evenings → publish.py → Are.na channel (fr_20_p_music) → Next.js reads channel → static site`
+`evenings → publish.py → Are.na channel (ARENA_CHANNEL) → Next.js reads channel → static site`
 
 ## The single read call
 One request returns everything per mix — no per-track or per-block fan-out:
 
 ```
-GET https://api.are.na/v3/channels/fr_20_p_music/contents
+GET https://api.are.na/v3/channels/<ARENA_CHANNEL>/contents
 ```
 
 Per item (one Attachment block = one mix), the site uses:
@@ -46,7 +46,7 @@ Suggested: factor "fetch channel + UA header + token" into one small server modu
 
 ## Example fetch
 ```js
-const res = await fetch("https://api.are.na/v3/channels/fr_20_p_music/contents", {
+const res = await fetch(`https://api.are.na/v3/channels/${process.env.ARENA_CHANNEL}/contents`, {
   headers: {
     Authorization: `Bearer ${process.env.ARENA_TOKEN}`,
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
@@ -88,8 +88,10 @@ Goal: rebuild only on the three real change types — **new block**, **cover ima
 Two trigger paths, because two of the three changes happen outside `publish.py`:
 
 1. **`publish.py` push (instant, zero polling)** — for **new blocks** and **tracklist edits** (both
-   done *by* the script). After `upload`/`set-meta`, have `publish.py` POST to a Next revalidate
-   route with a shared secret → `revalidateTag('mixes')`. The API is hit ~once per publish.
+   done *by* the script). `publish.py revalidate` POSTs to the Next revalidate route with a shared
+   secret (`SITE_URL` + `REVALIDATE_SECRET` env vars) → `revalidateTag('mixes')`. The `/publish-mix`
+   skill calls this as its last step, and again after any manual channel edit made outside the
+   script. The API is hit ~once per publish (or edit).
 2. **Cover uploads happen in the Are.na desktop app** → nothing to push from. **Chosen approach: a
    once-daily Vercel Cron poll.** It fetches `/contents`, compares the block fingerprint above to the
    last build, and `revalidateTag('mixes')` only if it changed. Covers self-heal within ~24h with no

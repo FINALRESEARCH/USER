@@ -70,13 +70,27 @@ title (and date/duration if present), so the user picks the mix to publish. Use 
      description came back intact. If markdown links clearly don't render on Are.na, re-run with a
      plain `Artist – Title — <url>` description instead and tell the user.
 
-6. **Report.** Print the Are.na block URL, file size, #tracks, #links set. If a local copy was
-   downloaded (last-resort path only), remind the user the mp3 in `downloads/` is their working copy
-   (masters belong on the Synology archive); it is gitignored and won't be committed. With the
-   default ingest/stream paths there is no local file.
+6. **Sync the live site.** The Next.js site (see `WEBAPP.md`) reads the Are.na channel through an
+   ISR tag (`mixes`) that only busts on an explicit revalidate call or the daily cron — it will
+   NOT pick up this publish on its own. Run `publish.py revalidate` now. If `SITE_URL` or
+   `REVALIDATE_SECRET` isn't set, don't block the publish on it — tell the user the block is live on
+   Are.na but the site needs a manual revalidate (or a wait for the daily cron) until those env vars
+   are configured (see CLAUDE.md).
+   - **This isn't only a publish-time step.** Any time you edit the channel outside this flow —
+     swapping a block for a re-upload, disconnecting/reconnecting blocks, editing a description by
+     hand — call `publish.py revalidate` again afterward so the site reflects it.
+
+7. **Report.** Print the Are.na block URL, file size, #tracks, #links set, and whether the site
+   revalidate succeeded. If a local copy was downloaded (last-resort path only), remind the user the
+   mp3 in `downloads/` is their working copy (masters belong on the Synology archive); it is
+   gitignored and won't be committed. With the default ingest/stream paths there is no local file.
 
 ## Notes
 - Keep the user in control: confirm the parsed tracklist and each link before writing.
 - Never commit `.env`, `downloads/`, or mp3s (already gitignored).
 - If env vars are absent in a cloud/phone session, they must be set as Claude Code environment
   secrets — point the user to CLAUDE.md.
+- `SITE_URL`'s host may not be reachable from a cloud/phone session's network policy (only an
+  allowlisted set of hosts is reachable there) even when it works fine from a local machine. If
+  `revalidate` fails with a network/connect error rather than an auth error, say so plainly instead
+  of retrying — it's a policy gap, not a bug in the call.

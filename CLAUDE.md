@@ -19,6 +19,9 @@ the *read* side; its API contract, gotchas, and Vercel free-tier strategy are in
 3. User pastes a tracklist; skill parses it.
 4. For each track, `WebSearch` Bandcamp + YouTube → user confirms the link (`AskUserQuestion`).
 5. `set-meta` writes the title + markdown tracklist into the block description.
+6. `revalidate` POSTs the live site's `/api/revalidate` route so it picks up the change immediately
+   instead of waiting for the daily cron (see `WEBAPP.md`). Also re-run this after any manual edit to
+   the Are.na channel (swapping a block, disconnecting one, hand-editing a description).
 
 ## Verified Are.na API behavior (confirmed on a real run 2026-06, mp3 ~5 MB)
 - **Presign body shape:** `POST /v3/uploads/presign` requires `{"files":[{filename, content_type}]}`
@@ -37,13 +40,23 @@ the *read* side; its API contract, gotchas, and Vercel free-tier strategy are in
 ## Required environment variables
 - `EVENINGS_API_KEY` — evenings personal API key (Bearer).
 - `ARENA_TOKEN` — Are.na personal access token (Bearer).
-- `ARENA_CHANNEL` — target Are.na channel slug or id.
+- `ARENA_CHANNEL` — target Are.na channel slug or id. **Verify this against the actual channel
+  before trusting it** — nothing validates it at rest, and a stale/wrong slug 404s silently until
+  you try to use it (this happened once already: the env var pointed at a nonexistent slug that
+  looked plausible instead of the real channel, `fr_20_p_user`).
 - Optional: `EVENINGS_API_BASE` (default `https://api.evenings.co/v1`),
   `ARENA_API_BASE` (default `https://api.are.na/v3`),
   `EVENINGS_STATION` (station slug for `publish.py recent`'s "pick a mix" listing).
+- For the `publish.py revalidate` step (see WEBAPP.md): `SITE_URL` (the live site's base URL) and
+  `REVALIDATE_SECRET` (shared secret, must match the `REVALIDATE_SECRET` set on the Vercel project).
+  Not required for the Are.na publish itself — if unset, `revalidate` fails and the skill should say
+  so rather than block the rest of the flow.
 
 Locally these come from a gitignored `.env`. **In cloud/phone sessions, set them as Claude Code
-environment secrets** — the sandbox cannot read the local `.env`.
+environment secrets** — the sandbox cannot read the local `.env`. Note also that a cloud/phone
+session's outbound network is policy-restricted to an allowlist of hosts; `SITE_URL`'s host may need
+to be added to that allowlist before `revalidate` can succeed from such a session (it works fine from
+a local machine's unrestricted network regardless).
 
 ## Verified facts (resolved on first real run, 2026-06-18 — block 47135727)
 1. **Are.na attachment file-size limit** — RESOLVED: a 142 MB mp3 uploaded fine. R2 fallback not needed.

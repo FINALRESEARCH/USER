@@ -16,7 +16,7 @@ export default function MixItem({ mix }: { mix: Mix }) {
           {/* description.html is our own controlled content from publish.py —
               anchors already carry target/rel. Render it directly. */}
           {mix.descriptionHtml ? (
-            <div dangerouslySetInnerHTML={{ __html: mix.descriptionHtml }} />
+            <div className="tracklist" dangerouslySetInnerHTML={{ __html: mix.descriptionHtml }} />
           ) : null}
           {/* Cover lives inside the tracklist — only shown when expanded. */}
           {mix.coverSmall ? (

@@ -61,7 +61,8 @@ title (and date/duration if present), so the user picks the mix to publish. Use 
      Batch several tracks per question turn to keep it fast; skipped tracks get no link.
 
 5. **Write description.** Build a markdown description:
-   - First line: the mix title (and date if known).
+   - First line: literally `Tracklist` (not the mix title — the title only goes in the block's
+     `title` field, set separately via `--title`).
    - Then a numbered tracklist; each line `n. [Artist – Title](confirmed-url)` (timestamp prefix if
      present). Tracks with no link are plain text.
    - Write it to a temp file `downloads/desc.md` and run

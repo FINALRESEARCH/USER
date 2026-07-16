@@ -30,6 +30,14 @@ a:visited {
   color: #c9f;
 }
 
+/* Tracklist links (per-track Bandcamp/YouTube): no link color at all, just
+   plain white text that happens to be clickable. */
+.tracklist a,
+.tracklist a:visited {
+  color: #fff;
+  text-decoration: none;
+}
+
 /* Custom audio player: play toggle, a 2px scrub bar, time labels. Nothing else. */
 .player {
   display: flex;

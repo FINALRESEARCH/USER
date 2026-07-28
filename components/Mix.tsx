@@ -4,7 +4,7 @@ import AudioPlayer from "@/components/AudioPlayer";
 // One published mix. Render order (per design): title → audio → tracklist → cover.
 export default function MixItem({ mix }: { mix: Mix }) {
   return (
-    <div>
+    <div className="mix">
       <h2>{mix.title}</h2>
 
       {/* Stream straight from the are.na CDN — never proxied through Next. */}

@@ -40,7 +40,7 @@ a:visited {
 
 /* Space between mixes: each MixItem is one of these at the top level. */
 .mix {
-  margin-bottom: 32px;
+  margin-bottom: 20px;
 }
 .mix:last-child {
   margin-bottom: 0;

@@ -2,9 +2,13 @@ import type { Mix } from "@/lib/arena";
 import AudioPlayer from "@/components/AudioPlayer";
 
 // One published mix. Render order (per design): title → audio → tracklist → cover.
-export default function MixItem({ mix }: { mix: Mix }) {
+//
+// `number` is this mix's position in the displayed list (#1 = newest) and
+// doubles as its permalink fragment: yoursite.com/#1 opens the page scrolled
+// to this mix with its tracklist expanded (see PermalinkOpener).
+export default function MixItem({ mix, number }: { mix: Mix; number: number }) {
   return (
-    <div className="mix">
+    <div className="mix" id={String(number)}>
       <h2>{mix.title}</h2>
 
       {/* Stream straight from the are.na CDN — never proxied through Next. */}

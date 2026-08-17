@@ -21,7 +21,6 @@ export type Mix = {
   id: number;
   title: string;
   audioUrl: string | null;
-  coverSmall: string | null;
   coverFull: string | null;
   descriptionHtml: string;
   connectionId: number | null;
@@ -32,7 +31,6 @@ export type Mix = {
 
 type ArenaImage = {
   src?: string;
-  small?: { src?: string };
   updated_at?: string;
 };
 
@@ -89,7 +87,6 @@ export async function fetchMixes(): Promise<Mix[]> {
       id: b.id,
       title: b.title?.trim() || "Untitled",
       audioUrl: b.attachment?.url ?? null,
-      coverSmall: b.image?.small?.src ?? null,
       coverFull: b.image?.src ?? null,
       descriptionHtml: descriptionHtml(b.description),
       connectionId: b.connection?.id ?? null,

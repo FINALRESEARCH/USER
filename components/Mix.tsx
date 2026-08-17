@@ -14,7 +14,7 @@ export default function MixItem({ mix, number }: { mix: Mix; number: number }) {
       {/* Stream straight from the are.na CDN — never proxied through Next. */}
       {mix.audioUrl ? <AudioPlayer src={mix.audioUrl} /> : null}
 
-      {mix.descriptionHtml || mix.coverSmall ? (
+      {mix.descriptionHtml || mix.coverFull ? (
         <details>
           <summary>View Details</summary>
           {/* description.html is our own controlled content from publish.py —
@@ -22,10 +22,14 @@ export default function MixItem({ mix, number }: { mix: Mix; number: number }) {
           {mix.descriptionHtml ? (
             <div className="tracklist" dangerouslySetInnerHTML={{ __html: mix.descriptionHtml }} />
           ) : null}
-          {/* Cover lives inside the tracklist — only shown when expanded. */}
-          {mix.coverSmall ? (
+          {/* Cover lives inside the tracklist — only shown when expanded.
+              Full-res source even though CSS displays it small (img{max-width:240px}
+              in globals.css): the pre-resized `small` variant (400px) reads blurry
+              once the browser scales it up for a 2x/3x display. Bytes still come
+              straight from are.na's CDN either way, so this doesn't touch Vercel. */}
+          {mix.coverFull ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={mix.coverSmall} alt={`${mix.title} cover`} />
+            <img src={mix.coverFull} alt={`${mix.title} cover`} />
           ) : null}
         </details>
       ) : null}

@@ -20,17 +20,24 @@ export default async function Home() {
     );
   }
 
+  // Permalink numbers follow publish order (oldest = #1), matching the "USER N"
+  // title convention — NOT display order (mixes render newest-first, above).
+  // Ranking by position instead of by title text means it still works if a
+  // mix is ever retitled, and — unlike numbering by display position — a
+  // mix's number never shifts when a newer mix is published.
+  const numberByMixId = new Map(
+    [...mixes].sort((a, b) => a.position - b.position).map((mix, i) => [mix.id, i + 1])
+  );
+
   return (
     <main>
       <PermalinkOpener />
       {mixes.length === 0 ? (
         <p>No mixes yet.</p>
       ) : (
-        // Sequential, display-order numbers (#1 = newest) so a mix can be
-        // linked as yoursite.com/#1. Note: this number shifts for every mix
-        // when a new one is published, so old #N links can later point at a
-        // different mix — accepted tradeoff, see CLAUDE.md/WEBAPP.md.
-        mixes.map((mix, i) => <MixItem key={mix.id} mix={mix} number={i + 1} />)
+        mixes.map((mix) => (
+          <MixItem key={mix.id} mix={mix} number={numberByMixId.get(mix.id)!} />
+        ))
       )}
     </main>
   );
